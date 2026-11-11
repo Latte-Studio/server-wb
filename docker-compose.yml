@@ -1,0 +1,51 @@
+# WorkBuddy2API-Hub —— 雷池 WAF 前置部署用 Compose
+#
+# 网络模型：
+#   Internet → 雷池 tengine(443) → [docker 内网 safeline] → wb-proxy:8788
+#   宿主机仅 127.0.0.1:8788，留给 SSH 隧道开看板；安全组不要放行 8788。
+#
+# 起之前先确认雷池的 docker 网络名：
+#   docker network ls --format '{{.Name}}' | grep -i safeline
+# 若不是 safeline-ce，把下面 networks.safeline.name 改成实际名称。
+
+services:
+  wb-proxy:
+    image: ghcr.io/ardeyouxipianyi/workbuddy2api-hub:latest
+    container_name: wb-proxy          # 雷池站点上游填 http://wb-proxy:8788
+    restart: unless-stopped
+
+    ports:
+      # 只绑回环：给 SSH 隧道看板；⚠️ 不要写成 "8788:8788"
+      - "127.0.0.1:8788:8788"
+      # 兜底方案（不用 docker 网络时）：绑 docker0 网关，供雷池容器访问
+      # - "172.17.0.1:8788:8788"
+
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8788
+      - TZ=Asia/Shanghai
+      - WB_TLS_FINGERPRINT=auto
+      # - WB_ENABLE_ANTHROPIC_MESSAGES=1
+
+    volumes:
+      - ./accounts:/app/accounts
+      - ./usage:/app/usage
+      - ./subbridge-data:/app/subbridge-data
+
+    networks:
+      - default
+      - safeline
+
+    security_opt:
+      - no-new-privileges:true
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+networks:
+  safeline:
+    external: true
+    name: safeline-ce   # ← 按 docker network ls 的结果改
